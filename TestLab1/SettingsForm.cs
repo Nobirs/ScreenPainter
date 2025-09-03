@@ -23,11 +23,65 @@ namespace TestLab1
 
         private Button settingsButton;
 
+        private Point mouseDownLocation;
+        private bool isDragging = false;
+
+        private ContextMenuStrip menu;
+        private bool isMenuOpened = false;
+
         public SettingsForm()
         {
             InitializeComponent();
             SetupForm();
             SetupSettingsButton();
+
+            settingsButton.MouseDown += SettingsButton_MouseDown;
+            settingsButton.MouseMove += SettingsButton_MouseMove;
+            settingsButton.MouseUp += SettingsButton_MouseUp;
+        }
+
+        private void SettingsButton_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                isDragging = false;
+                mouseDownLocation = e.Location;
+            }
+        }
+
+        private void SettingsButton_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                int dx = e.X - mouseDownLocation.X;
+                int dy = e.Y - mouseDownLocation.Y;
+
+                if (!isDragging && (Math.Abs(dx) > 3 || Math.Abs(dy) > 3))
+                    isDragging = true;
+
+                if (isDragging)
+                {
+                    Point screenPos = settingsButton.PointToScreen(e.Location);
+                    this.Location = new Point(screenPos.X - mouseDownLocation.X, screenPos.Y - mouseDownLocation.Y);
+                }
+            }
+            
+        }
+
+        private void SettingsButton_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (!isDragging && e.Button == MouseButtons.Left)
+            {
+                if (!isMenuOpened)
+                {
+                    ShowSettingsMenu();
+                    isMenuOpened = true;
+                } else
+                {
+                    closeSettingsMenu();
+                    isMenuOpened = false;
+                }
+            }
         }
 
         private void SetupForm()
@@ -73,92 +127,25 @@ namespace TestLab1
             settingsButton.Cursor = Cursors.Hand;
             settingsButton.Text = "";
 
-            var bmp = new Bitmap(128, 128, PixelFormat.Format32bppArgb);
-            using (var g = Graphics.FromImage(bmp))
+            // загружаем иконку
+            try
             {
-                g.Clear(Color.Transparent);
-
-                using (var gp = new GraphicsPath())
+                using (var ms = new System.IO.MemoryStream(Properties.Resources.settings128))
                 {
-                    gp.AddEllipse(0, 0, bmp.Width - 1, bmp.Height - 1);
-                    using (var pgb = new PathGradientBrush(gp))
-                    {
-                        pgb.CenterColor = Color.FromArgb(180, 255, 255, 255);
-                        pgb.SurroundColors = new Color[] { Color.FromArgb(12, 255, 255, 255) };
-                        //pgb.FocusScales = new PointF(0.6f, 0.6f);
-                        g.FillEllipse(pgb, 0, 0, bmp.Width, bmp.Height);
-                    }
+                    settingsButton.Image = Image.FromStream(ms);
                 }
-
-                // небольшой шум 
-                var rnd = new Random(1234);
-                int noise = (bmp.Width * bmp.Height) / 300;
-                for (int i = 0; i < noise; i++)
-                {
-                    int x = rnd.Next(bmp.Width);
-                    int y = rnd.Next(bmp.Height);
-                    float dx = x - bmp.Width / 2f;
-                    float dy = y - bmp.Height / 2f;
-                    float d = (float)Math.Sqrt(dx * dx + dy * dy);
-                    if (d > bmp.Width * 0.28f && d < bmp.Width * 0.48f)
-                    {
-                        int a = rnd.Next(10, 45);
-                        using (var br = new SolidBrush(Color.FromArgb(a, 255, 255, 255)))
-                        {
-                            g.FillEllipse(br, x, y, 1, 1);
-                        }
-                    }
-                }
-
-                // подгружаем иконку или fallback
-                try
-                {
-                    using (var ms = new System.IO.MemoryStream(Properties.Resources.settings128))
-                    using (var icon = Image.FromStream(ms))
-                    {
-                        int target = (int)(bmp.Width * 0.86);
-                        var rect = new Rectangle(
-                            (bmp.Width - target) / 2,
-                            (bmp.Height - target) / 2,
-                            target,
-                            target
-                        );
-                        g.DrawImage(icon, rect);
-                    }
-                }
-                catch
-                {
-                    DrawGearFallback(g, bmp.Width, bmp.Height);
-                }
-
             }
-
-            settingsButton.Image = bmp;
-            settingsButton.ImageAlign = ContentAlignment.MiddleCenter;
-            settingsButton.Click += SettingsButton_Click;
+            catch
+            {
+                settingsButton.Image = null; // тогда в OnPaint нарисуется ⚙
+            }
 
             this.Controls.Add(settingsButton);
         }
 
-
-        private void DrawGearFallback(Graphics g, int w, int h)
+        private void createSettingsMenu()
         {
-            using (var sf = new StringFormat() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-            using (var f = new Font("Segoe UI Emoji", 28, FontStyle.Regular, GraphicsUnit.Pixel))
-            using (var br = new SolidBrush(Color.FromArgb(220, 40, 40, 40)))
-            {
-                g.DrawString("⚙", f, br, new RectangleF(0, 0, w, h), sf);
-            }
-        }
-
-        private void SettingsButton_Click(object sender, EventArgs e)
-        {
-            ShowSettingsMenu();
-        }
-
-        private void ShowSettingsMenu()
-        {
-            var menu = new ContextMenuStrip();
+            this.menu = new ContextMenuStrip();
             menu.Font = new Font("Segoe UI", 10);
             menu.ShowImageMargin = false;
             menu.Renderer = new ModernMenuRenderer();
@@ -214,9 +201,21 @@ namespace TestLab1
 
             menu.Items.Add(mClear);
             menu.Items.Add(mExit);
+        }
 
-            // Показываем меню под кнопкой
-            menu.Show(settingsButton, new Point(0, settingsButton.Height));
+        private void ShowSettingsMenu()
+        {
+            if(this.menu == null)
+            {
+                createSettingsMenu();
+            }
+
+            this.menu.Show(settingsButton, new Point(settingsButton.Width, settingsButton.Height / 2));
+        }
+
+        private void closeSettingsMenu()
+        {
+            this.menu.Close();
         }
 
         protected override void OnPaintBackground(PaintEventArgs e)

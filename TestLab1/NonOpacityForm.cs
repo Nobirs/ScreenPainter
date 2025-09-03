@@ -35,7 +35,7 @@ namespace TestLab1
 
         private SettingsForm settingsForm;
 
-        // ---------- WinAPI / GDI ----------
+        #region // ---------- WinAPI / GDI ----------
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool UpdateLayeredWindow(IntPtr hwnd,
             IntPtr hdcDst, ref POINT pptDst, ref SIZE psize,
@@ -88,7 +88,7 @@ namespace TestLab1
             public byte AlphaFormat;
         }
 
-        // Low-level mouse hook bits (как у вас раньше)
+        // Low-level mouse hook bits
         [DllImport("user32.dll")]
         private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc callback, IntPtr hInstance, uint threadId);
 
@@ -117,7 +117,7 @@ namespace TestLab1
 
         private LowLevelMouseProc _mouseProc;
         private IntPtr _mouseHook = IntPtr.Zero;
-
+        #endregion
         public NonOpacityForm()
         {
             InitializeComponent();
@@ -185,12 +185,10 @@ namespace TestLab1
             if (this.ClientSize.Width > 0 && this.ClientSize.Height > 0)
             {
                 CreateLayerResources(this.ClientSize);
-                // пометим, что нужно перерисовать всё (перенести все saved paths)
-                // нарисуем заново все сохранённые пути в layerGraphics:
                 if (layerGraphics != null)
                 {
                     layerGraphics.Clear(Color.Transparent);
-                    RenderDrawing(layerGraphics); // отрисует все allPaths + currentPath если нужно
+                    RenderDrawing(layerGraphics);
                     needsUpdate = true;
                 }
             }
@@ -203,13 +201,29 @@ namespace TestLab1
             settingsForm.OnThicknessChanged += (thickness) => currentBrushSize = thickness;
             settingsForm.OnClearScreen += () =>
             {
-                allPaths.Clear();
+                ClearScreen();
                 RedrawLayer();
             };
             settingsForm.OnExit += () => this.Close();
 
             settingsForm.TopMost = true;
             settingsForm.Show();
+        }
+
+        private void ClearScreen()
+        {
+            allPaths.Clear();
+            currentPath = null;
+            isDrawing = false;
+            lastDrawPoint = null;
+
+            // Очищаем оффскринный буфер
+            if (layerGraphics != null)
+            {
+                layerGraphics.Clear(Color.Transparent);
+            }
+
+            needsUpdate = true;
         }
 
         private void SetupKeyboardEvents()
@@ -388,7 +402,6 @@ namespace TestLab1
         // Этот метод создаёт ARGB-битмап, рисует на нём все пути, и обновляет окно.
         private void RedrawLayer()
         {
-            // Защита: окно может быть не инициализировано
             if (this.Width <= 0 || this.Height <= 0 || this.IsDisposed) return;
 
             // Создаём 32bpp ARGB bitmap
@@ -397,7 +410,7 @@ namespace TestLab1
                 using (var g = Graphics.FromImage(bmp))
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.Clear(Color.Transparent); // важно: прозрачный фон
+                    g.Clear(Color.Transparent); // прозрачный фон
 
                     // рисуем все пути на bmp
                     RenderDrawing(g);
