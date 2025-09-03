@@ -30,12 +30,14 @@ namespace TestLab1
         private System.Windows.Forms.Timer renderTimer;
         private volatile bool needsUpdate = false;
         private Point? lastDrawPoint = null;
-        private const int RenderIntervalMs = 24; //  FPS
-        private const int MinPointDistanceSq = 4; // порог 2px (2*2)
+        private const int RenderIntervalMs = 24;
+        private const int MinPointDistanceSq = 4;
 
         private SettingsForm settingsForm;
+        private bool _isConsumingMouseEvents = false;
+        private Point _drawStartPoint;
 
-        #region // ---------- WinAPI / GDI ----------
+        #region WinAPI Imports
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool UpdateLayeredWindow(IntPtr hwnd,
             IntPtr hdcDst, ref POINT pptDst, ref SIZE psize,
@@ -66,29 +68,6 @@ namespace TestLab1
         [DllImport("user32.dll")]
         private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
-        private const int GWL_EXSTYLE = -20;
-        private const int WS_EX_LAYERED = 0x80000;
-        private const int WS_EX_TRANSPARENT = 0x20;
-        private const int ULW_ALPHA = 0x00000002;
-        private const byte AC_SRC_OVER = 0x00;
-        private const byte AC_SRC_ALPHA = 0x01;
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct POINT { public int x, y; }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct SIZE { public int cx, cy; }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct BLENDFUNCTION
-        {
-            public byte BlendOp;
-            public byte BlendFlags;
-            public byte SourceConstantAlpha;
-            public byte AlphaFormat;
-        }
-
-        // Low-level mouse hook bits
         [DllImport("user32.dll")]
         private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc callback, IntPtr hInstance, uint threadId);
 
@@ -107,17 +86,58 @@ namespace TestLab1
         [DllImport("user32.dll")]
         private static extern bool ScreenToClient(IntPtr hWnd, ref POINT point);
 
+        [DllImport("user32.dll")]
+        private static extern bool SetCursorPos(int x, int y);
+
+        [DllImport("user32.dll")]
+        private static extern bool ClipCursor(ref Rectangle lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern bool ClipCursor(IntPtr lpRect);
+
         private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_LAYERED = 0x80000;
+        private const int WS_EX_TRANSPARENT = 0x20;
+        private const int ULW_ALPHA = 0x00000002;
+        private const byte AC_SRC_OVER = 0x00;
+        private const byte AC_SRC_ALPHA = 0x01;
         private const int WH_MOUSE_LL = 14;
         private const int WM_LBUTTONDOWN = 0x0201;
         private const int WM_LBUTTONUP = 0x0202;
         private const int WM_MOUSEMOVE = 0x0200;
         private const int VK_CONTROL = 0x11;
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT { public int x; public int y; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SIZE { public int cx; public int cy; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct BLENDFUNCTION
+        {
+            public byte BlendOp;
+            public byte BlendFlags;
+            public byte SourceConstantAlpha;
+            public byte AlphaFormat;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MSLLHOOKSTRUCT
+        {
+            public POINT pt;
+            public uint mouseData;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+        #endregion
+
         private LowLevelMouseProc _mouseProc;
         private IntPtr _mouseHook = IntPtr.Zero;
-        #endregion
+
         public NonOpacityForm()
         {
             InitializeComponent();
@@ -125,8 +145,6 @@ namespace TestLab1
             SetupSettingsForm();
             SetupKeyboardEvents();
             SetupMouseHook();
-
-            // Первичная отрисовка слоя (пустой)
             RedrawLayer();
         }
 
@@ -135,29 +153,20 @@ namespace TestLab1
             this.FormBorderStyle = FormBorderStyle.None;
             this.WindowState = FormWindowState.Maximized;
             this.TopMost = true;
+            this.DoubleBuffered = true;
 
-            this.SetStyle(ControlStyles.UserPaint |
-                          ControlStyles.AllPaintingInWmPaint |
-                          ControlStyles.OptimizedDoubleBuffer, true);
-            this.UpdateStyles();
+            int exStyle = GetWindowLong(this.Handle, GWL_EXSTYLE);
+            exStyle |= WS_EX_LAYERED;
+            SetWindowLong(this.Handle, GWL_EXSTYLE, exStyle);
 
-            // Сделаем layered (для UpdateLayeredWindow) и click-through по умолчанию
-            int ex = GetWindowLong(this.Handle, GWL_EXSTYLE);
-            ex |= WS_EX_LAYERED;
-            ex |= WS_EX_TRANSPARENT;
-            SetWindowLong(this.Handle, GWL_EXSTYLE, ex);
-
-            // Создаём offscreen bitmap + graphics
             CreateLayerResources(this.ClientSize);
 
-            // Таймер для батчевого обновления окна
             renderTimer = new System.Windows.Forms.Timer();
             renderTimer.Interval = RenderIntervalMs;
             renderTimer.Tick += (s, e) =>
             {
                 if (needsUpdate)
                 {
-                    // UpdateLayeredWindow heavy call only when needed and on timer
                     RedrawLayerImmediate();
                     needsUpdate = false;
                 }
@@ -167,7 +176,6 @@ namespace TestLab1
 
         private void CreateLayerResources(Size size)
         {
-            // освободить старые если есть
             layerGraphics?.Dispose();
             layerBitmap?.Dispose();
 
@@ -205,7 +213,6 @@ namespace TestLab1
                 RedrawLayer();
             };
             settingsForm.OnExit += () => this.Close();
-
             settingsForm.TopMost = true;
             settingsForm.Show();
         }
@@ -217,7 +224,6 @@ namespace TestLab1
             isDrawing = false;
             lastDrawPoint = null;
 
-            // Очищаем оффскринный буфер
             if (layerGraphics != null)
             {
                 layerGraphics.Clear(Color.Transparent);
@@ -242,7 +248,7 @@ namespace TestLab1
 
         private IntPtr MouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            if (nCode >= 0 && this.Visible)
+            if (nCode >= 0 && this.Visible && !this.IsDisposed)
             {
                 int msg = wParam.ToInt32();
                 MSLLHOOKSTRUCT hookStruct = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
@@ -265,26 +271,32 @@ namespace TestLab1
                 switch (msg)
                 {
                     case WM_LBUTTONDOWN:
-                        if (ctrlPressed)
+                        if (ctrlPressed && !isDrawing)
                         {
+                            _isConsumingMouseEvents = true;
+                            _drawStartPoint = screenPoint;
+                            CaptureMouse();
+
                             this.BeginInvoke((Action)(() =>
                             {
                                 isDrawing = true;
                                 currentPath = new DrawingPath { Color = currentColor, Thickness = currentBrushSize };
                                 currentPath.Points.Add(formPoint);
-
-                                // стартовая точка для инкрементального рисования
                                 lastDrawPoint = formPoint;
-                                // рисуем маленькую точку сразу в layerGraphics
+
                                 if (layerGraphics != null)
                                 {
                                     using (var b = new SolidBrush(currentPath.Color))
                                     {
-                                        layerGraphics.FillEllipse(b, formPoint.X - currentPath.Thickness / 2, formPoint.Y - currentPath.Thickness / 2, currentPath.Thickness, currentPath.Thickness);
+                                        layerGraphics.FillEllipse(b, formPoint.X - currentPath.Thickness / 2,
+                                            formPoint.Y - currentPath.Thickness / 2,
+                                            currentPath.Thickness, currentPath.Thickness);
                                     }
                                     needsUpdate = true;
                                 }
                             }));
+
+                            return (IntPtr)1;
                         }
                         break;
 
@@ -295,15 +307,15 @@ namespace TestLab1
                             {
                                 if (currentPath != null)
                                 {
-                                    // декимация — добавим точку только если достаточно далеко от предыдущей
-                                    Point prev = currentPath.Points.Count > 0 ? currentPath.Points[currentPath.Points.Count - 1] : formPoint;
+                                    Point prev = currentPath.Points.Count > 0 ?
+                                        currentPath.Points[currentPath.Points.Count - 1] : formPoint;
                                     int dx = formPoint.X - prev.X;
                                     int dy = formPoint.Y - prev.Y;
+
                                     if (dx * dx + dy * dy >= MinPointDistanceSq)
                                     {
                                         currentPath.Points.Add(formPoint);
 
-                                        // Рисуем только последний сегмент на layerGraphics — это быстро.
                                         if (layerGraphics != null && lastDrawPoint != null)
                                         {
                                             using (var pen = new Pen(currentPath.Color, currentPath.Thickness)
@@ -316,20 +328,15 @@ namespace TestLab1
                                                 layerGraphics.DrawLine(pen, lastDrawPoint.Value, formPoint);
                                             }
                                         }
-                                        else if (layerGraphics != null && lastDrawPoint == null)
-                                        {
-                                            // начальный точечный штрих
-                                            using (var b = new SolidBrush(currentPath.Color))
-                                            {
-                                                layerGraphics.FillEllipse(b, formPoint.X - currentPath.Thickness / 2, formPoint.Y - currentPath.Thickness / 2, currentPath.Thickness, currentPath.Thickness);
-                                            }
-                                        }
 
                                         lastDrawPoint = formPoint;
-                                        needsUpdate = true; // пометить, что окно нужно обновить на следующем тике
+                                        needsUpdate = true;
                                     }
                                 }
                             }));
+
+                            SetCursorPos(formPoint.X, formPoint.Y);
+                            return (IntPtr)1;
                         }
                         break;
 
@@ -347,12 +354,54 @@ namespace TestLab1
                                 lastDrawPoint = null;
                                 needsUpdate = true;
                             }));
+
+                            _isConsumingMouseEvents = false;
+                            ReleaseMouse();
+                            return (IntPtr)1;
                         }
                         break;
                 }
             }
 
             return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+        }
+
+        private void CaptureMouse()
+        {
+            Rectangle screenBounds = Screen.PrimaryScreen.Bounds;
+            ClipCursor(ref screenBounds);
+            Cursor.Hide();
+        }
+
+        private void ReleaseMouse()
+        {
+            ClipCursor(IntPtr.Zero);
+            Cursor.Show();
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_LBUTTONDOWN = 0x0201;
+            const int WM_LBUTTONUP = 0x0202;
+            const int WM_MOUSEMOVE = 0x0200;
+            const int WM_LBUTTONDBLCLK = 0x0203;
+            const int WM_RBUTTONDOWN = 0x0204;
+
+            if (_isConsumingMouseEvents)
+            {
+                switch (m.Msg)
+                {
+                    case WM_LBUTTONDOWN:
+                    case WM_LBUTTONUP:
+                    case WM_MOUSEMOVE:
+                    case WM_LBUTTONDBLCLK:
+                    case WM_RBUTTONDOWN:
+                        m.Result = (IntPtr)1;
+                        return;
+                }
+            }
+
+            base.WndProc(ref m);
         }
 
         private void MainForm_KeyDown(object sender, KeyEventArgs e)
@@ -363,7 +412,7 @@ namespace TestLab1
                 this.Cursor = Cursors.Cross;
 
                 int exStyle = GetWindowLong(this.Handle, GWL_EXSTYLE);
-                exStyle &= ~WS_EX_TRANSPARENT; // снимаем click-through, чтобы получать мышь
+                exStyle &= ~WS_EX_TRANSPARENT;
                 SetWindowLong(this.Handle, GWL_EXSTYLE, exStyle);
             }
             else if (e.KeyCode == Keys.Escape)
@@ -380,7 +429,7 @@ namespace TestLab1
                 this.Cursor = Cursors.Default;
 
                 int exStyle = GetWindowLong(this.Handle, GWL_EXSTYLE);
-                exStyle |= WS_EX_TRANSPARENT; // вновь пропускаем клики
+                exStyle |= WS_EX_TRANSPARENT;
                 SetWindowLong(this.Handle, GWL_EXSTYLE, exStyle);
             }
         }
@@ -396,70 +445,51 @@ namespace TestLab1
             }
 
             settingsForm?.Close();
+            layerGraphics?.Dispose();
+            layerBitmap?.Dispose();
         }
 
-        // ---------- Rendering via UpdateLayeredWindow ----------
-        // Этот метод создаёт ARGB-битмап, рисует на нём все пути, и обновляет окно.
         private void RedrawLayer()
         {
             if (this.Width <= 0 || this.Height <= 0 || this.IsDisposed) return;
 
-            // Создаём 32bpp ARGB bitmap
             using (var bmp = new Bitmap(this.Width, this.Height, PixelFormat.Format32bppArgb))
             {
                 using (var g = Graphics.FromImage(bmp))
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.Clear(Color.Transparent); // прозрачный фон
-
-                    // рисуем все пути на bmp
+                    g.Clear(Color.Transparent);
                     RenderDrawing(g);
                 }
 
-                IntPtr screenDc = GetDC(IntPtr.Zero);
-                IntPtr memDc = CreateCompatibleDC(screenDc);
-                IntPtr hBitmap = bmp.GetHbitmap(Color.FromArgb(0)); // попытка сохранить прозрачность
-                IntPtr oldBitmap = SelectObject(memDc, hBitmap);
-
-                POINT topPos = new POINT { x = this.Left, y = this.Top };
-                SIZE size = new SIZE { cx = this.Width, cy = this.Height };
-                POINT src = new POINT { x = 0, y = 0 };
-
-                BLENDFUNCTION blend = new BLENDFUNCTION
-                {
-                    BlendOp = AC_SRC_OVER,
-                    BlendFlags = 0,
-                    SourceConstantAlpha = 255,
-                    AlphaFormat = AC_SRC_ALPHA
-                };
-
-                // UpdateLayeredWindow = обновляем per-pixel альфа содержимое окна
-                UpdateLayeredWindow(this.Handle, screenDc, ref topPos, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
-
-                // очистка
-                SelectObject(memDc, oldBitmap);
-                DeleteObject(hBitmap);
-                DeleteDC(memDc);
-                ReleaseDC(IntPtr.Zero, screenDc);
+                UpdateLayeredWindowFromBitmap(bmp);
             }
         }
-
 
         private void RedrawLayerImmediate()
         {
             if (layerBitmap == null) return;
+            UpdateLayeredWindowFromBitmap(layerBitmap);
+        }
 
-            // Если ты хранишь все линии в allPaths, то layerBitmap уже содержит инкрементальные рисунки.
-            // Здесь конвертируем layerBitmap -> HBITMAP и вызываем UpdateLayeredWindow (как раньше).
+        private void UpdateLayeredWindowFromBitmap(Bitmap bmp)
+        {
             IntPtr screenDc = GetDC(IntPtr.Zero);
             IntPtr memDc = CreateCompatibleDC(screenDc);
-            IntPtr hBitmap = layerBitmap.GetHbitmap(Color.FromArgb(0)); // heavy, но делаем это только ~60fps
+            IntPtr hBitmap = bmp.GetHbitmap(Color.FromArgb(0));
             IntPtr oldBitmap = SelectObject(memDc, hBitmap);
 
             POINT topPos = new POINT { x = this.Left, y = this.Top };
             SIZE size = new SIZE { cx = this.Width, cy = this.Height };
             POINT src = new POINT { x = 0, y = 0 };
-            BLENDFUNCTION blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, BlendFlags = 0, SourceConstantAlpha = 255, AlphaFormat = AC_SRC_ALPHA };
+
+            BLENDFUNCTION blend = new BLENDFUNCTION
+            {
+                BlendOp = AC_SRC_OVER,
+                BlendFlags = 0,
+                SourceConstantAlpha = 255,
+                AlphaFormat = AC_SRC_ALPHA
+            };
 
             UpdateLayeredWindow(this.Handle, screenDc, ref topPos, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
 
@@ -468,9 +498,9 @@ namespace TestLab1
             DeleteDC(memDc);
             ReleaseDC(IntPtr.Zero, screenDc);
         }
+
         private void RenderDrawing(Graphics g)
         {
-            // рисуем все сохраненные пути (полностью непрозрачные)
             foreach (var path in allPaths)
             {
                 if (path.Points.Count > 1)
@@ -487,7 +517,6 @@ namespace TestLab1
                 }
             }
 
-            // рисуем текущий путь
             if (currentPath != null && currentPath.Points.Count > 1)
             {
                 using (var pen = new Pen(currentPath.Color, currentPath.Thickness)
@@ -500,20 +529,6 @@ namespace TestLab1
                     g.DrawLines(pen, currentPath.Points.ToArray());
                 }
             }
-        }
-
-        // Мелкие вспомогательные структуры для хука
-        [StructLayout(LayoutKind.Sequential)]
-        private struct POINTAPI { public int x, y; } // не используется напрямую
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MSLLHOOKSTRUCT
-        {
-            public POINT pt;
-            public uint mouseData;
-            public uint flags;
-            public uint time;
-            public IntPtr dwExtraInfo;
         }
     }
 }
