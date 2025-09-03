@@ -13,9 +13,11 @@
         /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
+            if (disposing)
             {
-                components.Dispose();
+                // очистка ресурсов
+                if (settingsButton?.Image is IDisposable dispImg)
+                    dispImg.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -28,16 +30,13 @@
         /// </summary>
         private void InitializeComponent()
         {
-            SuspendLayout();
+            this.SuspendLayout();
             // 
             // SettingsForm
             // 
-            AutoScaleDimensions = new SizeF(13F, 32F);
-            AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(232, 80);
-            Name = "SettingsForm";
-            Text = "SettingsForm";
-            ResumeLayout(false);
+            this.ClientSize = new System.Drawing.Size(128, 128);
+            this.Name = "SettingsForm";
+            this.ResumeLayout(false);
         }
 
 
