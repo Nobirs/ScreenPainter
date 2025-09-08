@@ -25,6 +25,7 @@ namespace TestLab1
 
         private Point mouseDownLocation;
         private bool isDragging = false;
+        private const int MAX_NODRAG_DISTANCE = 3;
 
         private ContextMenuStrip menu;
         private bool isMenuOpened = false;
@@ -35,9 +36,6 @@ namespace TestLab1
             SetupForm();
             SetupSettingsButton();
 
-            settingsButton.MouseDown += SettingsButton_MouseDown;
-            settingsButton.MouseMove += SettingsButton_MouseMove;
-            settingsButton.MouseUp += SettingsButton_MouseUp;
         }
 
         private void SettingsButton_MouseDown(object sender, MouseEventArgs e)
@@ -56,13 +54,14 @@ namespace TestLab1
                 int dx = e.X - mouseDownLocation.X;
                 int dy = e.Y - mouseDownLocation.Y;
 
-                if (!isDragging && (Math.Abs(dx) > 3 || Math.Abs(dy) > 3))
+                if (!isDragging && (Math.Abs(dx) > MAX_NODRAG_DISTANCE || Math.Abs(dy) > MAX_NODRAG_DISTANCE))
                     isDragging = true;
 
                 if (isDragging)
                 {
                     Point screenPos = settingsButton.PointToScreen(e.Location);
-                    this.Location = new Point(screenPos.X - mouseDownLocation.X, screenPos.Y - mouseDownLocation.Y);
+                    this.Location = new Point(screenPos.X - mouseDownLocation.X, 
+                        screenPos.Y - mouseDownLocation.Y);
                 }
             }
             
@@ -89,22 +88,10 @@ namespace TestLab1
             this.FormBorderStyle = FormBorderStyle.None;
             this.ClientSize = new Size(128, 128);
 
-            // Включаем поддержку layered window
-            if (Environment.OSVersion.Version.Major >= 6) // Vista и выше
-            {
-                // Используем DWM для настоящей прозрачности
-                this.AllowTransparency = true;
-                this.TransparencyKey = Color.Magenta;
-                this.BackColor = Color.Magenta;
-            }
-            else
-            {
-                // Для старых Windows - fallback
-                this.BackColor = Color.Magenta;
-                this.TransparencyKey = Color.Magenta;
-            }
+            this.AllowTransparency = true;
+            this.TransparencyKey = Color.Magenta;
+            this.BackColor = Color.Magenta;
 
-            // Делаем форму круглой
             SetFormRound();
 
             this.ShowInTaskbar = false;
@@ -127,7 +114,7 @@ namespace TestLab1
             settingsButton.Cursor = Cursors.Hand;
             settingsButton.Text = "";
 
-            // загружаем иконку
+            // Load Icon
             try
             {
                 using (var ms = new System.IO.MemoryStream(Properties.Resources.settings128))
@@ -137,10 +124,14 @@ namespace TestLab1
             }
             catch
             {
-                settingsButton.Image = null; // тогда в OnPaint нарисуется ⚙
+                settingsButton.Image = null;
             }
 
             this.Controls.Add(settingsButton);
+
+            settingsButton.MouseDown += SettingsButton_MouseDown;
+            settingsButton.MouseMove += SettingsButton_MouseMove;
+            settingsButton.MouseUp += SettingsButton_MouseUp;
         }
 
         private void createSettingsMenu()
@@ -171,27 +162,45 @@ namespace TestLab1
             menu.Items.Add(mFree);
             menu.Items.Add(new ToolStripSeparator());
 
-            var colorsHeader = new ToolStripLabel("Цвета") { ForeColor = Color.White, Enabled = false };
-            menu.Items.Add(colorsHeader);
+            var colorsMenu = new ToolStripMenuItem("Цвета") { ForeColor = Color.White };
+            menu.Items.Add(colorsMenu);
             foreach (var c in colors)
             {
                 var it = new ToolStripMenuItem(c.name) { ForeColor = Color.White };
+                if (it.Text == "Красный") it.Checked = true;
                 it.Click += (s, e) =>
                 {
                     OnColorChanged?.Invoke(c.col);
+                    it.Checked = true;
+                    foreach (ToolStripMenuItem colorItem in colorsMenu.DropDownItems)
+                    {
+                        if (colorItem.Checked && colorItem.Text != it.Text) colorItem.Checked = false;
+                    }
+
                 };
-                menu.Items.Add(it);
+                colorsMenu.DropDownItems.Add(it);
             }
 
             menu.Items.Add(new ToolStripSeparator());
 
-            // Размеры кисти
+
+            var brushMenu = new ToolStripMenuItem("Кисти") { ForeColor = Color.White };
+            menu.Items.Add(brushMenu);
             int[] sizes = { 2, 5, 8, 12, 16, 20 };
             foreach (var s in sizes)
             {
-                var it = new ToolStripMenuItem($"Кисть {s}px") { ForeColor = Color.White };
-                it.Click += (ss, ee) => OnThicknessChanged?.Invoke(s);
-                menu.Items.Add(it);
+                var it = new ToolStripMenuItem($"{s}px") { ForeColor = Color.White };
+                if (it.Text == "2px") it.Checked = true;
+                it.Click += (ss, ee) =>
+                {
+                    OnThicknessChanged?.Invoke(s);
+                    it.Checked = true;
+                    foreach (ToolStripMenuItem brushItem in brushMenu.DropDownItems)
+                    {
+                        if (brushItem.Checked && brushItem.Text != it.Text) brushItem.Checked = false;
+                    }
+                };
+                brushMenu.DropDownItems.Add(it);
             }
 
             menu.Items.Add(new ToolStripSeparator());

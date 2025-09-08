@@ -9,33 +9,23 @@ using System.Drawing.Imaging;
 
 namespace TestLab1
 {
-    public class DrawingPath
-    {
-        public List<Point> Points { get; set; } = new List<Point>();
-        public Color Color { get; set; }
-        public int Thickness { get; set; }
-    }
-
     public partial class NonOpacityForm : Form
     {
-        private List<DrawingPath> allPaths = new List<DrawingPath>();
-        private DrawingPath currentPath = null;
-        private bool isDrawing = false;
-        private Color currentColor = Color.Red;
-        private int currentBrushSize = 3;
-        private bool ctrlPressed = false;
+        private DrawingContext _context = new DrawingContext();
 
         private Bitmap layerBitmap;
         private Graphics layerGraphics;
         private System.Windows.Forms.Timer renderTimer;
         private volatile bool needsUpdate = false;
-        private Point? lastDrawPoint = null;
-        private const int RenderIntervalMs = 24;
+        private const int RenderIntervalMs = 16;
         private const int MinPointDistanceSq = 4;
+
 
         private SettingsForm settingsForm;
         private bool _isConsumingMouseEvents = false;
         private Point _drawStartPoint;
+        private bool ctrlPressed = false;
+        private bool isTempCommited = false;
 
         #region WinAPI Imports
         [DllImport("user32.dll", SetLastError = true)]
@@ -145,6 +135,15 @@ namespace TestLab1
             SetupSettingsForm();
             SetupKeyboardEvents();
             SetupMouseHook();
+
+            // default tool
+            var freehand = new FreehandTool() { color = Color.Red, thickness = 3 };
+            var ellipsehand = new EllipseTool() { color = Color.Red, thickness = 3 };
+
+            _context.CurrentTool = freehand;
+            _context.CurrentTool = ellipsehand;
+
+            CreateLayerResources(this.ClientSize);
             RedrawLayer();
         }
 
@@ -169,6 +168,11 @@ namespace TestLab1
                 {
                     RedrawLayerImmediate();
                     needsUpdate = false;
+                    if (isTempCommited)
+                    {
+                        _context.Undo();
+                        isTempCommited = false;
+                    }
                 }
             };
             renderTimer.Start();
@@ -205,30 +209,19 @@ namespace TestLab1
         private void SetupSettingsForm()
         {
             settingsForm = new SettingsForm();
-            settingsForm.OnColorChanged += (color) => currentColor = color;
-            settingsForm.OnThicknessChanged += (thickness) => currentBrushSize = thickness;
-            settingsForm.OnClearScreen += () =>
-            {
-                ClearScreen();
-                RedrawLayer();
-            };
+            settingsForm.OnColorChanged += (color) => { if (_context.CurrentTool != null) _context.CurrentTool.color = color; };
+            settingsForm.OnThicknessChanged += (th) => { if (_context.CurrentTool != null) _context.CurrentTool.thickness = th; };
+            settingsForm.OnClearScreen += () => { _context.Shapes.Clear(); _context.ClearHistory(); RenderFullAndRequestUpdate(); };
             settingsForm.OnExit += () => this.Close();
             settingsForm.TopMost = true;
             settingsForm.Show();
         }
 
-        private void ClearScreen()
+        private void RenderFullAndRequestUpdate()
         {
-            allPaths.Clear();
-            currentPath = null;
-            isDrawing = false;
-            lastDrawPoint = null;
-
-            if (layerGraphics != null)
-            {
-                layerGraphics.Clear(Color.Transparent);
-            }
-
+            if (layerGraphics == null) return;
+            layerGraphics.Clear(Color.Transparent);
+            RenderDrawing(layerGraphics);
             needsUpdate = true;
         }
 
@@ -256,44 +249,35 @@ namespace TestLab1
                 POINT cursorPos = new POINT { x = hookStruct.pt.x, y = hookStruct.pt.y };
                 Point screenPoint = new Point(cursorPos.x, cursorPos.y);
 
+                // Не перехватываем события, когда курсор над settingsForm
                 bool isOverSettingsForm = settingsForm != null && settingsForm.Bounds.Contains(screenPoint);
                 if (isOverSettingsForm)
-                {
                     return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
-                }
 
+                // Конвертируем в координаты формы
                 POINT clientPoint = cursorPos;
                 ScreenToClient(this.Handle, ref clientPoint);
                 Point formPoint = new Point(clientPoint.x, clientPoint.y);
 
+                // Обновляем состояние Ctrl
                 ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
 
                 switch (msg)
                 {
                     case WM_LBUTTONDOWN:
-                        if (ctrlPressed && !isDrawing)
+                        if (ctrlPressed && !_isConsumingMouseEvents)
                         {
                             _isConsumingMouseEvents = true;
                             _drawStartPoint = screenPoint;
                             CaptureMouse();
 
+                            // Все взаимодействия с GDI+/UI делаем в UI-потоке
                             this.BeginInvoke((Action)(() =>
                             {
-                                isDrawing = true;
-                                currentPath = new DrawingPath { Color = currentColor, Thickness = currentBrushSize };
-                                currentPath.Points.Add(formPoint);
-                                lastDrawPoint = formPoint;
-
-                                if (layerGraphics != null)
-                                {
-                                    using (var b = new SolidBrush(currentPath.Color))
-                                    {
-                                        layerGraphics.FillEllipse(b, formPoint.X - currentPath.Thickness / 2,
-                                            formPoint.Y - currentPath.Thickness / 2,
-                                            currentPath.Thickness, currentPath.Thickness);
-                                    }
-                                    needsUpdate = true;
-                                }
+                                var tool = _context.CurrentTool;
+                                tool.SetCanvasSnapshot(layerBitmap);
+                                tool?.OnMouseDown(formPoint, layerGraphics);
+                                needsUpdate = true;
                             }));
 
                             return (IntPtr)1;
@@ -301,57 +285,39 @@ namespace TestLab1
                         break;
 
                     case WM_MOUSEMOVE:
-                        if (isDrawing && ctrlPressed)
+                        if (_isConsumingMouseEvents && ctrlPressed)
                         {
-                            this.BeginInvoke((Action)(() =>
+                            if (_context.CurrentTool.CheckPointsDistance(formPoint))
                             {
-                                if (currentPath != null)
+                                this.BeginInvoke((Action)(() =>
                                 {
-                                    Point prev = currentPath.Points.Count > 0 ?
-                                        currentPath.Points[currentPath.Points.Count - 1] : formPoint;
-                                    int dx = formPoint.X - prev.X;
-                                    int dy = formPoint.Y - prev.Y;
+                                    var tool = _context.CurrentTool;
+                                    if (tool == null) return;
 
-                                    if (dx * dx + dy * dy >= MinPointDistanceSq)
+                                    var tempshape = tool.OnMouseMove(formPoint, layerGraphics);
+                                    if(tempshape != null)
                                     {
-                                        currentPath.Points.Add(formPoint);
-
-                                        if (layerGraphics != null && lastDrawPoint != null)
-                                        {
-                                            using (var pen = new Pen(currentPath.Color, currentPath.Thickness)
-                                            {
-                                                StartCap = LineCap.Round,
-                                                EndCap = LineCap.Round,
-                                                LineJoin = LineJoin.Round
-                                            })
-                                            {
-                                                layerGraphics.DrawLine(pen, lastDrawPoint.Value, formPoint);
-                                            }
-                                        }
-
-                                        lastDrawPoint = formPoint;
-                                        needsUpdate = true;
+                                        _context.CommitShape(tempshape);
+                                        isTempCommited = true;
                                     }
-                                }
-                            }));
-
+                                    needsUpdate = true;
+                                }));
+                            }
                             SetCursorPos(formPoint.X, formPoint.Y);
                             return (IntPtr)1;
                         }
                         break;
 
                     case WM_LBUTTONUP:
-                        if (isDrawing)
+                        if (_isConsumingMouseEvents)
                         {
                             this.BeginInvoke((Action)(() =>
                             {
-                                isDrawing = false;
-                                if (currentPath != null && currentPath.Points.Count > 1)
+                                var finished = _context.CurrentTool?.OnMouseUp(formPoint, layerGraphics);
+                                if (finished != null)
                                 {
-                                    allPaths.Add(currentPath);
-                                }
-                                currentPath = null;
-                                lastDrawPoint = null;
+                                    _context.CommitShape(finished);
+                                } 
                                 needsUpdate = true;
                             }));
 
@@ -365,6 +331,9 @@ namespace TestLab1
 
             return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
         }
+
+
+
 
         private void CaptureMouse()
         {
@@ -501,34 +470,12 @@ namespace TestLab1
 
         private void RenderDrawing(Graphics g)
         {
-            foreach (var path in allPaths)
-            {
-                if (path.Points.Count > 1)
-                {
-                    using (var pen = new Pen(path.Color, path.Thickness)
-                    {
-                        StartCap = LineCap.Round,
-                        EndCap = LineCap.Round,
-                        LineJoin = LineJoin.Round
-                    })
-                    {
-                        g.DrawLines(pen, path.Points.ToArray());
-                    }
-                }
-            }
+            foreach (var shape in _context.Shapes)
+                shape.Draw(g);
 
-            if (currentPath != null && currentPath.Points.Count > 1)
-            {
-                using (var pen = new Pen(currentPath.Color, currentPath.Thickness)
-                {
-                    StartCap = LineCap.Round,
-                    EndCap = LineCap.Round,
-                    LineJoin = LineJoin.Round
-                })
-                {
-                    g.DrawLines(pen, currentPath.Points.ToArray());
-                }
-            }
+
+            // preview
+            _context.CurrentTool?.DrawPreview(g);
         }
     }
 }

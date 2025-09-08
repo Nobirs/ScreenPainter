@@ -33,15 +33,15 @@ namespace TestLab1
             this.MouseEnter += (s, e) =>
             {
                 targetScale = 1.2f;
-                targetAlpha = 240; // ярче
-                animTimer.Start();
+                targetAlpha = 255; // ярче
+                animTimer?.Start();
             };
 
             this.MouseLeave += (s, e) =>
             {
                 targetScale = 1.0f;
                 targetAlpha = 180; // нормальное состояние
-                animTimer.Start();
+                animTimer?.Start();
             };
 
             animTimer = new Timer { Interval = 15 }; // ~60 FPS
@@ -72,18 +72,8 @@ namespace TestLab1
             Invalidate();
         }
 
-        protected override void OnPaintBackground(PaintEventArgs pevent)
-        {
-            // отключаем заливку прямоугольника
-        }
-
         protected override void OnPaint(PaintEventArgs pevent)
         {
-            var path = new GraphicsPath();
-            path.AddEllipse(ClientRectangle);
-            this.Region = new Region(path);
-
-
             var g = pevent.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.Transparent);
@@ -106,7 +96,7 @@ namespace TestLab1
                 }
             }
 
-            // иконка
+            // Icon
             if (this.Image != null)
             {
                 int target = (int)(w * 0.86);
