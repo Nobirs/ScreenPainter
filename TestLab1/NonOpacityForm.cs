@@ -15,17 +15,15 @@ namespace TestLab1
 
         private Bitmap layerBitmap;
         private Graphics layerGraphics;
+
         private System.Windows.Forms.Timer renderTimer;
         private volatile bool needsUpdate = false;
-        private const int RenderIntervalMs = 16;
+        private const int RenderIntervalMs = 32;
         private const int MinPointDistanceSq = 4;
-
 
         private SettingsForm settingsForm;
         private bool _isConsumingMouseEvents = false;
-        private Point _drawStartPoint;
         private bool ctrlPressed = false;
-        private bool isTempCommited = false;
 
         #region WinAPI Imports
         [DllImport("user32.dll", SetLastError = true)]
@@ -75,9 +73,6 @@ namespace TestLab1
 
         [DllImport("user32.dll")]
         private static extern bool ScreenToClient(IntPtr hWnd, ref POINT point);
-
-        [DllImport("user32.dll")]
-        private static extern bool SetCursorPos(int x, int y);
 
         [DllImport("user32.dll")]
         private static extern bool ClipCursor(ref Rectangle lpRect);
@@ -131,19 +126,21 @@ namespace TestLab1
         public NonOpacityForm()
         {
             InitializeComponent();
+
             SetupForm();
             SetupSettingsForm();
             SetupKeyboardEvents();
             SetupMouseHook();
 
-            // default tool
-            var freehand = new FreehandTool() { color = Color.Red, thickness = 3 };
-            var ellipsehand = new EllipseTool() { color = Color.Red, thickness = 3 };
+            _context.CurrentTool = new FreehandTool() { color = Color.Red, thickness = 3 };
+            _context.CurrentTool = new EllipseTool() { color = Color.Red, thickness = 3 };
+        }
 
-            _context.CurrentTool = freehand;
-            _context.CurrentTool = ellipsehand;
-
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
             CreateLayerResources(this.ClientSize);
+            needsUpdate = true;
             RedrawLayer();
         }
 
@@ -155,10 +152,8 @@ namespace TestLab1
             this.DoubleBuffered = true;
 
             int exStyle = GetWindowLong(this.Handle, GWL_EXSTYLE);
-            exStyle |= WS_EX_LAYERED;
+            exStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT;
             SetWindowLong(this.Handle, GWL_EXSTYLE, exStyle);
-
-            CreateLayerResources(this.ClientSize);
 
             renderTimer = new System.Windows.Forms.Timer();
             renderTimer.Interval = RenderIntervalMs;
@@ -166,13 +161,8 @@ namespace TestLab1
             {
                 if (needsUpdate)
                 {
-                    RedrawLayerImmediate();
+                    RenderDrawing();
                     needsUpdate = false;
-                    if (isTempCommited)
-                    {
-                        _context.Undo();
-                        isTempCommited = false;
-                    }
                 }
             };
             renderTimer.Start();
@@ -197,12 +187,7 @@ namespace TestLab1
             if (this.ClientSize.Width > 0 && this.ClientSize.Height > 0)
             {
                 CreateLayerResources(this.ClientSize);
-                if (layerGraphics != null)
-                {
-                    layerGraphics.Clear(Color.Transparent);
-                    RenderDrawing(layerGraphics);
-                    needsUpdate = true;
-                }
+                needsUpdate = true;
             }
         }
 
@@ -211,18 +196,10 @@ namespace TestLab1
             settingsForm = new SettingsForm();
             settingsForm.OnColorChanged += (color) => { if (_context.CurrentTool != null) _context.CurrentTool.color = color; };
             settingsForm.OnThicknessChanged += (th) => { if (_context.CurrentTool != null) _context.CurrentTool.thickness = th; };
-            settingsForm.OnClearScreen += () => { _context.Shapes.Clear(); _context.ClearHistory(); RenderFullAndRequestUpdate(); };
+            settingsForm.OnClearScreen += () => { _context.Shapes.Clear(); _context.ClearHistory(); needsUpdate = true; };
             settingsForm.OnExit += () => this.Close();
             settingsForm.TopMost = true;
             settingsForm.Show();
-        }
-
-        private void RenderFullAndRequestUpdate()
-        {
-            if (layerGraphics == null) return;
-            layerGraphics.Clear(Color.Transparent);
-            RenderDrawing(layerGraphics);
-            needsUpdate = true;
         }
 
         private void SetupKeyboardEvents()
@@ -249,17 +226,14 @@ namespace TestLab1
                 POINT cursorPos = new POINT { x = hookStruct.pt.x, y = hookStruct.pt.y };
                 Point screenPoint = new Point(cursorPos.x, cursorPos.y);
 
-                // Не перехватываем события, когда курсор над settingsForm
                 bool isOverSettingsForm = settingsForm != null && settingsForm.Bounds.Contains(screenPoint);
                 if (isOverSettingsForm)
                     return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
 
-                // Конвертируем в координаты формы
                 POINT clientPoint = cursorPos;
                 ScreenToClient(this.Handle, ref clientPoint);
                 Point formPoint = new Point(clientPoint.x, clientPoint.y);
 
-                // Обновляем состояние Ctrl
                 ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
 
                 switch (msg)
@@ -268,58 +242,38 @@ namespace TestLab1
                         if (ctrlPressed && !_isConsumingMouseEvents)
                         {
                             _isConsumingMouseEvents = true;
-                            _drawStartPoint = screenPoint;
                             CaptureMouse();
 
-                            // Все взаимодействия с GDI+/UI делаем в UI-потоке
-                            this.BeginInvoke((Action)(() =>
-                            {
-                                var tool = _context.CurrentTool;
-                                tool.SetCanvasSnapshot(layerBitmap);
-                                tool?.OnMouseDown(formPoint, layerGraphics);
-                                needsUpdate = true;
-                            }));
+                            var tool = _context.CurrentTool;
+                            tool?.OnMouseDown(formPoint);
+                            needsUpdate = true;
 
                             return (IntPtr)1;
                         }
                         break;
 
                     case WM_MOUSEMOVE:
-                        if (_isConsumingMouseEvents && ctrlPressed)
+                        if (_isConsumingMouseEvents && ctrlPressed && _context.CurrentTool.CheckPointsDistance(formPoint))
                         {
-                            if (_context.CurrentTool.CheckPointsDistance(formPoint))
+                            var tool = _context.CurrentTool;
+                            if (tool != null)
                             {
-                                this.BeginInvoke((Action)(() =>
-                                {
-                                    var tool = _context.CurrentTool;
-                                    if (tool == null) return;
-
-                                    var tempshape = tool.OnMouseMove(formPoint, layerGraphics);
-                                    if(tempshape != null)
-                                    {
-                                        _context.CommitShape(tempshape);
-                                        isTempCommited = true;
-                                    }
-                                    needsUpdate = true;
-                                }));
+                                tool.OnMouseMove(formPoint);
+                                needsUpdate = true;
                             }
-                            SetCursorPos(formPoint.X, formPoint.Y);
-                            return (IntPtr)1;
+
                         }
                         break;
 
                     case WM_LBUTTONUP:
                         if (_isConsumingMouseEvents)
                         {
-                            this.BeginInvoke((Action)(() =>
+                            var finished = _context.CurrentTool?.OnMouseUp(formPoint);
+                            if (finished != null)
                             {
-                                var finished = _context.CurrentTool?.OnMouseUp(formPoint, layerGraphics);
-                                if (finished != null)
-                                {
-                                    _context.CommitShape(finished);
-                                } 
-                                needsUpdate = true;
-                            }));
+                                _context.CommitShape(finished);
+                            }
+                            needsUpdate = true;
 
                             _isConsumingMouseEvents = false;
                             ReleaseMouse();
@@ -332,13 +286,10 @@ namespace TestLab1
             return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
         }
 
-
-
-
         private void CaptureMouse()
         {
-            Rectangle screenBounds = Screen.PrimaryScreen.Bounds;
-            ClipCursor(ref screenBounds);
+            var screenRect = new Rectangle(this.Bounds.X, this.Bounds.Y, this.Bounds.Width, this.Bounds.Height);
+            ClipCursor(ref screenRect);
             Cursor.Hide();
         }
 
@@ -421,24 +372,7 @@ namespace TestLab1
         private void RedrawLayer()
         {
             if (this.Width <= 0 || this.Height <= 0 || this.IsDisposed) return;
-
-            using (var bmp = new Bitmap(this.Width, this.Height, PixelFormat.Format32bppArgb))
-            {
-                using (var g = Graphics.FromImage(bmp))
-                {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.Clear(Color.Transparent);
-                    RenderDrawing(g);
-                }
-
-                UpdateLayeredWindowFromBitmap(bmp);
-            }
-        }
-
-        private void RedrawLayerImmediate()
-        {
-            if (layerBitmap == null) return;
-            UpdateLayeredWindowFromBitmap(layerBitmap);
+            RenderDrawing();
         }
 
         private void UpdateLayeredWindowFromBitmap(Bitmap bmp)
@@ -448,8 +382,10 @@ namespace TestLab1
             IntPtr hBitmap = bmp.GetHbitmap(Color.FromArgb(0));
             IntPtr oldBitmap = SelectObject(memDc, hBitmap);
 
-            POINT topPos = new POINT { x = this.Left, y = this.Top };
-            SIZE size = new SIZE { cx = this.Width, cy = this.Height };
+            var screenPos = this.PointToScreen(Point.Empty);
+            POINT topPos = new POINT { x = screenPos.X, y = screenPos.Y };
+
+            SIZE size = new SIZE { cx = bmp.Width, cy = bmp.Height };
             POINT src = new POINT { x = 0, y = 0 };
 
             BLENDFUNCTION blend = new BLENDFUNCTION
@@ -468,14 +404,17 @@ namespace TestLab1
             ReleaseDC(IntPtr.Zero, screenDc);
         }
 
-        private void RenderDrawing(Graphics g)
+        private void RenderDrawing()
         {
+            if (layerGraphics == null || layerBitmap == null) return;
+
+            layerGraphics.Clear(Color.Transparent);
+
             foreach (var shape in _context.Shapes)
-                shape.Draw(g);
+                shape.Draw(layerGraphics);
 
-
-            // preview
-            _context.CurrentTool?.DrawPreview(g);
+            _context.CurrentTool?.DrawPreview(layerGraphics);
+            UpdateLayeredWindowFromBitmap(layerBitmap);
         }
     }
 }

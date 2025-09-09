@@ -12,12 +12,18 @@ namespace TestLab1
         public Color color { get; set; } = Color.Red;
         public int thickness { get; set; } = 3;
         public int MinPointDistanceSq { get; } = 36;
-
-        public virtual void SetCanvasSnapshot(Bitmap bmp) { }
-        public abstract void OnMouseDown(Point p, Graphics g);
-        public abstract IDrawable OnMouseMove(Point p, Graphics g);
-        public abstract IDrawable OnMouseUp(Point p, Graphics g);
+        public abstract void OnMouseDown(Point p);
+        public abstract IDrawable OnMouseMove(Point p);
+        public abstract IDrawable OnMouseUp(Point p);
         public abstract void DrawPreview(System.Drawing.Graphics g);
         public abstract bool CheckPointsDistance(Point newPoint);
+    }
+
+    public enum Tool
+    {
+        Freehand,
+        Ellipsehand,
+        Rectanglehand,
+        Trianglehand
     }
 }

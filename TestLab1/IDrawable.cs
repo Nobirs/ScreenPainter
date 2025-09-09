@@ -10,9 +10,9 @@ namespace TestLab1
     {
         void Draw(System.Drawing.Graphics g);
         Point GetLastPoint();
-        void DrawOnMove(System.Drawing.Graphics g);
-        void DrawOnDown(System.Drawing.Graphics g);
-        void DrawOnUp(System.Drawing.Graphics g);
+        void OnMove(Point p);
+        void OnDown(Point p);
+        void OnUp(Point p);
         Rectangle GetBounds();
     }
 }

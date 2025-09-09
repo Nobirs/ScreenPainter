@@ -143,7 +143,14 @@ namespace TestLab1
             menu.BackColor = Color.Transparent;
 
             // Режимы (если нужно — можно добавить Checked-индикацию)
-            var mFree = new ToolStripMenuItem("Свободно (кисть)") { ForeColor = Color.White };
+            var mBrush = new ToolStripMenuItem("Способ рисования") { ForeColor = Color.White };
+
+            var freehand = new ToolStripMenuItem("Кисть") { ForeColor = Color.White };
+            var ellipsehand = new ToolStripMenuItem("Эллипс") { ForeColor = Color.White };
+            mBrush.DropDownItems.Add(freehand);
+            mBrush.DropDownItems.Add(ellipsehand);
+            ellipsehand.Select();
+
             var mClear = new ToolStripMenuItem("Очистить экран") { ForeColor = Color.White };
             var mExit = new ToolStripMenuItem("Выйти") { ForeColor = Color.White };
 
@@ -159,7 +166,7 @@ namespace TestLab1
             };
 
             // Добавляем режимы/функции
-            menu.Items.Add(mFree);
+            menu.Items.Add(mBrush);
             menu.Items.Add(new ToolStripSeparator());
 
             var colorsMenu = new ToolStripMenuItem("Цвета") { ForeColor = Color.White };

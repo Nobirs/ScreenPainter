@@ -13,7 +13,6 @@ namespace TestLab1
         public Point EndPoint { get; private set; } = Point.Empty;
         public Color Color { get; }
         public int Thickness { get; }
-        public bool IsDrawing { get; private set; } = false;
 
         public EllipsePath(Color color, int thickness)
         {
@@ -25,20 +24,11 @@ namespace TestLab1
         {
             StartPoint = p;
             EndPoint = p;
-            IsDrawing = true;
         }
 
         public void SetEndPoint(Point p)
         {
-            if (IsDrawing)
-            {
-                EndPoint = p;
-            }
-        }
-
-        public void CompleteDrawing()
-        {
-            IsDrawing = false;
+            EndPoint = p;
         }
 
         public Point GetLastPoint()
@@ -56,34 +46,19 @@ namespace TestLab1
             }
         }
 
-        public void DrawOnDown(Graphics g)
+        public void OnDown(Point p)
         {
-            // DO NOTHING
+            StartPoint = p;
         }
 
-        public void DrawOnMove(Graphics g)
+        public void OnMove(Point p)
         {
-            if (IsDrawing && StartPoint != Point.Empty && EndPoint != Point.Empty && StartPoint != EndPoint)
-            {
-                using var pen = new Pen(Color, Thickness)
-                {
-                    DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
-                };
-                var rect = GetDrawingRectangle();
-                g.DrawEllipse(pen, rect);
-            }
+            EndPoint = p;
         }
 
-        public void DrawOnUp(Graphics g)
+        public void OnUp(Point p)
         {
-            if (EndPoint != Point.Empty)
-            {
-                using var pen = new Pen(Color, Thickness);
-                var rect = GetDrawingRectangle();
-                g.DrawEllipse(pen, rect);
-
-                CompleteDrawing();
-            }
+             EndPoint = p;
         }
 
         private Rectangle GetDrawingRectangle()

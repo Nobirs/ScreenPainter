@@ -10,26 +10,15 @@ namespace TestLab1
     {
         private FreehandPath _currentPath;
 
-        public override void OnMouseDown(Point p, Graphics g)
+        public override void OnMouseDown(Point p)
         {
             _currentPath = new FreehandPath(color, thickness);
-            _currentPath.AddPoint(p);
-            _currentPath.DrawOnDown(g);
+            _currentPath.OnDown(p);
         }
 
-        public override IDrawable OnMouseMove(Point p, Graphics g)
+        public override IDrawable OnMouseMove(Point p)
         {
-            Point lastPoint = _currentPath.GetLastPoint();
-            if (_currentPath != null && !lastPoint.IsEmpty)
-            {
-                int dx = lastPoint.X - p.X;
-                int dy = lastPoint.Y - p.Y;
-                if (dx*dx + dy*dy >= MinPointDistanceSq)
-                {
-                    _currentPath?.AddPoint(p);
-                    _currentPath?.DrawOnMove(g);
-                }
-            }
+            _currentPath?.OnMove(p);
             return _currentPath;
         }
 
@@ -44,11 +33,10 @@ namespace TestLab1
             return dx * dx + dy * dy > MinPointDistanceSq;
         }
 
-        public override IDrawable OnMouseUp(Point p, Graphics g)
+        public override IDrawable OnMouseUp(Point p)
         {
             if (_currentPath == null) return null;
-            _currentPath.AddPoint(p);
-            _currentPath.DrawOnUp(g);
+            _currentPath.OnUp(p);
             var finished = _currentPath;
             _currentPath = null;
             return finished;

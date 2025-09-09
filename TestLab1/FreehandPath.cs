@@ -48,47 +48,51 @@ namespace TestLab1
             }
         }
 
-        public void DrawOnDown(Graphics g)
+        public void OnDown(Point p)
         {
-            if(Points.Count == 1)
-            {
-                using (var brush = new SolidBrush(Color))
-                {
-                    g.FillEllipse(brush,
-                        Points[0].X - Thickness / 2,
-                        Points[0].Y - Thickness / 2,
-                        Thickness, Thickness);
-                }
-            }
+            Points.Add(p);
+            //if(Points.Count == 1)
+            //{
+            //    using (var brush = new SolidBrush(Color))
+            //    {
+            //        g.FillEllipse(brush,
+            //            Points[0].X - Thickness / 2,
+            //            Points[0].Y - Thickness / 2,
+            //            Thickness, Thickness);
+            //    }
+            //}
+
         }
 
-        public void DrawOnMove(Graphics g)
+        public void OnMove(Point p)
         {
-            if(Points.Count > 0 && lastPointedIndex != Points.Count - 1)
-            {
-                using var pen = new Pen(Color, Thickness)
-                {
-                    StartCap = System.Drawing.Drawing2D.LineCap.Round,
-                    EndCap = System.Drawing.Drawing2D.LineCap.Round,
-                    LineJoin = System.Drawing.Drawing2D.LineJoin.Round
-                };
-                g.DrawLine(pen, Points[lastPointedIndex], Points[Points.Count - 1]);
-                lastPointedIndex = Points.Count - 1;
-            }
+            Points.Add(p);
+            //if(Points.Count > 0 && lastPointedIndex != Points.Count - 1)
+            //{
+            //    using var pen = new Pen(Color, Thickness)
+            //    {
+            //        StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            //        EndCap = System.Drawing.Drawing2D.LineCap.Round,
+            //        LineJoin = System.Drawing.Drawing2D.LineJoin.Round
+            //    };
+            //    g.DrawLine(pen, Points[lastPointedIndex], Points[Points.Count - 1]);
+            //    lastPointedIndex = Points.Count - 1;
+            //}
         }
 
-        public void DrawOnUp(Graphics g)
+        public void OnUp(Point p)
         {
-            if(Points.Count > 0)
-            {
-                using (var brush = new SolidBrush(Color))
-                {
-                    g.FillEllipse(brush,
-                        Points[Points.Count - 1].X - Thickness / 2,
-                        Points[Points.Count - 1].Y - Thickness / 2,
-                        Thickness, Thickness);
-                }
-            }
+            Points.Add(p);
+            //if(Points.Count > 0)
+            //{
+            //    using (var brush = new SolidBrush(Color))
+            //    {
+            //        g.FillEllipse(brush,
+            //            Points[Points.Count - 1].X - Thickness / 2,
+            //            Points[Points.Count - 1].Y - Thickness / 2,
+            //            Thickness, Thickness);
+            //    }
+            //}
         }
 
         public Rectangle GetBounds()
