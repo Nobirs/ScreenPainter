@@ -25,6 +25,8 @@ namespace TestLab1
         private bool _isConsumingMouseEvents = false;
         private bool ctrlPressed = false;
 
+        private Dictionary<Tool, DrawingTool> tools = new();
+
         #region WinAPI Imports
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool UpdateLayeredWindow(IntPtr hwnd,
@@ -132,8 +134,10 @@ namespace TestLab1
             SetupKeyboardEvents();
             SetupMouseHook();
 
-            _context.CurrentTool = new FreehandTool() { color = Color.Red, thickness = 3 };
-            _context.CurrentTool = new EllipseTool() { color = Color.Red, thickness = 3 };
+            tools.Add(Tool.Freehand, new FreehandTool() { color = Color.Red, thickness = 3 });
+            tools.Add(Tool.Ellipsehand, new EllipseTool() { color = Color.Red, thickness = 3 });
+
+            _context.CurrentTool = tools[Tool.Freehand];
         }
 
         protected override void OnShown(EventArgs e)
@@ -194,6 +198,7 @@ namespace TestLab1
         private void SetupSettingsForm()
         {
             settingsForm = new SettingsForm();
+            settingsForm.OnToolChanged += (tool) => { _context.CurrentTool = tools.GetValueOrDefault(tool, tools[Tool.Freehand]); };
             settingsForm.OnColorChanged += (color) => { if (_context.CurrentTool != null) _context.CurrentTool.color = color; };
             settingsForm.OnThicknessChanged += (th) => { if (_context.CurrentTool != null) _context.CurrentTool.thickness = th; };
             settingsForm.OnClearScreen += () => { _context.Shapes.Clear(); _context.ClearHistory(); needsUpdate = true; };

@@ -13,13 +13,19 @@ using System.Windows.Forms;
 
 namespace TestLab1
 {
-    // Отдельная форма для кнопки настроек
     public partial class SettingsForm : Form
     {
         public event Action<Color> OnColorChanged;
         public event Action<int> OnThicknessChanged;
+        public event Action<Tool> OnToolChanged;
         public event Action OnClearScreen;
         public event Action OnExit;
+
+        private ToolStripMenuItem mBrush;
+        private Dictionary<ToolStripMenuItem, Tool> toolMap = new();
+
+        private ToolStripMenuItem colorsMenu;
+        private ToolStripMenuItem brushMenu;
 
         private Button settingsButton;
 
@@ -142,19 +148,64 @@ namespace TestLab1
             menu.Renderer = new ModernMenuRenderer();
             menu.BackColor = Color.Transparent;
 
-            // Режимы (если нужно — можно добавить Checked-индикацию)
-            var mBrush = new ToolStripMenuItem("Способ рисования") { ForeColor = Color.White };
-
-            var freehand = new ToolStripMenuItem("Кисть") { ForeColor = Color.White };
-            var ellipsehand = new ToolStripMenuItem("Эллипс") { ForeColor = Color.White };
-            mBrush.DropDownItems.Add(freehand);
-            mBrush.DropDownItems.Add(ellipsehand);
-            ellipsehand.Select();
+            InitToolMenu();
+            menu.Items.Add(new ToolStripSeparator());
+            InitColorMenu();
+            menu.Items.Add(new ToolStripSeparator());
+            InitBrushMenu();
+            menu.Items.Add(new ToolStripSeparator());
 
             var mClear = new ToolStripMenuItem("Очистить экран") { ForeColor = Color.White };
             var mExit = new ToolStripMenuItem("Выйти") { ForeColor = Color.White };
+            mClear.Click += (s, e) => OnClearScreen?.Invoke();
+            mExit.Click += (s, e) => OnExit?.Invoke();
+            menu.Items.Add(mClear);
+            menu.Items.Add(mExit);
+        }
 
-            // Цвета
+        private void InitToolMenu()
+        {
+            mBrush = new ToolStripMenuItem("Способ рисования")
+            {
+                ForeColor = Color.White
+            };
+
+            AddToolMenuItem("Кисть", Tool.Freehand, isDefault: true);
+            AddToolMenuItem("Эллипс", Tool.Ellipsehand);
+
+            menu.Items.Add(mBrush);
+        }
+
+        private void AddToolMenuItem(string text, Tool tool, bool isDefault = false)
+        {
+            var item = new ToolStripMenuItem(text)
+            {
+                ForeColor = Color.White,
+                Checked = isDefault
+            };
+
+            item.Click += (s, e) => SelectTool(item);
+
+            mBrush.DropDownItems.Add(item);
+            toolMap[item] = tool;
+
+            if (isDefault)
+                OnToolChanged?.Invoke(tool);
+        }
+
+        private void SelectTool(ToolStripMenuItem selectedItem)
+        {
+            foreach (var item in toolMap.Keys)
+                item.Checked = false;
+
+            selectedItem.Checked = true;
+
+            if (toolMap.TryGetValue(selectedItem, out var tool))
+                OnToolChanged?.Invoke(tool);
+        }
+
+        private void InitColorMenu()
+        {
             var colors = new (string name, Color col)[]
             {
                 ("Красный", Color.Red),
@@ -165,11 +216,7 @@ namespace TestLab1
                 ("Чёрный", Color.Black),
             };
 
-            // Добавляем режимы/функции
-            menu.Items.Add(mBrush);
-            menu.Items.Add(new ToolStripSeparator());
-
-            var colorsMenu = new ToolStripMenuItem("Цвета") { ForeColor = Color.White };
+            colorsMenu = new ToolStripMenuItem("Цвета") { ForeColor = Color.White };
             menu.Items.Add(colorsMenu);
             foreach (var c in colors)
             {
@@ -187,11 +234,11 @@ namespace TestLab1
                 };
                 colorsMenu.DropDownItems.Add(it);
             }
+        }
 
-            menu.Items.Add(new ToolStripSeparator());
-
-
-            var brushMenu = new ToolStripMenuItem("Кисти") { ForeColor = Color.White };
+        private void InitBrushMenu()
+        {
+            brushMenu = new ToolStripMenuItem("Кисти") { ForeColor = Color.White };
             menu.Items.Add(brushMenu);
             int[] sizes = { 2, 5, 8, 12, 16, 20 };
             foreach (var s in sizes)
@@ -209,25 +256,18 @@ namespace TestLab1
                 };
                 brushMenu.DropDownItems.Add(it);
             }
-
-            menu.Items.Add(new ToolStripSeparator());
-
-            mClear.Click += (s, e) => OnClearScreen?.Invoke();
-            mExit.Click += (s, e) => OnExit?.Invoke();
-
-            menu.Items.Add(mClear);
-            menu.Items.Add(mExit);
         }
-
         private void ShowSettingsMenu()
         {
-            if(this.menu == null)
-            {
+            if (this.menu == null)
                 createSettingsMenu();
-            }
+
+            this.menu.Closed += (s, e) => isMenuOpened = false;
 
             this.menu.Show(settingsButton, new Point(settingsButton.Width, settingsButton.Height / 2));
+            isMenuOpened = true;
         }
+
 
         private void closeSettingsMenu()
         {
@@ -236,10 +276,9 @@ namespace TestLab1
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            // Не рисуем фон - прозрачный
+            //фон - прозрачный
         }
 
-        // ---------- Modern menu renderer ----------
         private class ModernMenuRenderer : ToolStripProfessionalRenderer
         {
             private readonly Color bg = Color.FromArgb(230, 40, 40, 40);     // основной фон
@@ -298,7 +337,6 @@ namespace TestLab1
 
             protected override void OnRenderItemImage(ToolStripItemImageRenderEventArgs e)
             {
-                // мы не используем изображения в меню
             }
 
             protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
