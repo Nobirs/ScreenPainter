@@ -12,17 +12,6 @@
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
 
-
-            //// Показываем форму загрузки
-            //using (var loadingForm = new LoadingForm())
-            //{
-            //    if (loadingForm.ShowDialog() == DialogResult.OK)
-            //    {
-            //        // Если загрузка завершилась успешно, запускаем главную форму
-            //        Application.Run(new Form1());
-            //    }
-            //}
-
             // Сначала показываем форму загрузки
             var loadingForm = new LoadingForm();
             loadingForm.ShowDialog();

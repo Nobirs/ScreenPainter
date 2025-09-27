@@ -4,8 +4,9 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using TestLab1.Draw;
 
-namespace TestLab1
+namespace TestLab1.Draw.Tools
 {
     public abstract class DrawingTool
     {
@@ -15,7 +16,7 @@ namespace TestLab1
         public abstract void OnMouseDown(Point p);
         public abstract IDrawable OnMouseMove(Point p);
         public abstract IDrawable OnMouseUp(Point p);
-        public abstract void DrawPreview(System.Drawing.Graphics g);
+        public abstract void DrawPreview(Graphics g);
         public abstract bool CheckPointsDistance(Point newPoint);
     }
 

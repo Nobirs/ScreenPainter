@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Drawing;
+using TestLab1.Draw;
+using TestLab1.Draw.Tools;
 
-namespace TestLab1
+namespace TestLab1.Draw.Tools.Ellipse
 {
     public class EllipseTool : DrawingTool
     {

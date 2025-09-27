@@ -4,11 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TestLab1
+namespace TestLab1.Draw
 {
     public interface IDrawable
     {
-        void Draw(System.Drawing.Graphics g);
+        void Draw(Graphics g);
         Point GetLastPoint();
         void OnMove(Point p);
         void OnDown(Point p);

@@ -4,8 +4,9 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TestLab1.Draw;
 
-namespace TestLab1
+namespace TestLab1.Draw.Tools.Ellipse
 {
     public class EllipsePath : IDrawable
     {
