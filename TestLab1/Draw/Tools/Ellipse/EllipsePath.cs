@@ -21,17 +21,6 @@ namespace TestLab1.Draw.Tools.Ellipse
             Thickness = thickness;
         }
 
-        public void SetStartPoint(Point p)
-        {
-            StartPoint = p;
-            EndPoint = p;
-        }
-
-        public void SetEndPoint(Point p)
-        {
-            EndPoint = p;
-        }
-
         public Point GetLastPoint()
         {
             return EndPoint;
@@ -62,23 +51,23 @@ namespace TestLab1.Draw.Tools.Ellipse
              EndPoint = p;
         }
 
-        private Rectangle GetDrawingRectangle()
+        protected System.Drawing.Rectangle GetDrawingRectangle()
         {
             int x = Math.Min(StartPoint.X, EndPoint.X);
             int y = Math.Min(StartPoint.Y, EndPoint.Y);
             int width = Math.Abs(EndPoint.X - StartPoint.X);
             int height = Math.Abs(EndPoint.Y - StartPoint.Y);
 
-            return new Rectangle(x, y, width, height);
+            return new System.Drawing.Rectangle(x, y, width, height);
         }
 
-        public Rectangle GetBounds()
+        public System.Drawing.Rectangle GetBounds()
         {
             if (StartPoint == Point.Empty || EndPoint == Point.Empty)
-                return Rectangle.Empty;
+                return System.Drawing.Rectangle.Empty;
 
             var rect = GetDrawingRectangle();
-            return Rectangle.Inflate(rect, Thickness, Thickness);
+            return System.Drawing.Rectangle.Inflate(rect, Thickness, Thickness);
         }
     }
 }
