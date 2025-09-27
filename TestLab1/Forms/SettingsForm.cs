@@ -173,6 +173,7 @@ namespace TestLab1
 
             AddToolMenuItem("Кисть", Tool.Freehand, isDefault: true);
             AddToolMenuItem("Эллипс", Tool.Ellipsehand);
+            AddToolMenuItem("Прямоугольник", Tool.Rectanglehand);
 
             menu.Items.Add(mBrush);
         }

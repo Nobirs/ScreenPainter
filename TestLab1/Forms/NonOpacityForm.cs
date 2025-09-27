@@ -7,6 +7,9 @@ using System.Runtime.InteropServices;
 using System.Diagnostics;
 using System.Drawing.Imaging;
 using TestLab1.Draw.Tools;
+using TestLab1.Draw.Tools.Freehand;
+using TestLab1.Draw.Tools.Ellipse;
+using TestLab1.Draw.Tools.Rectangle;
 
 namespace TestLab1
 {
@@ -137,6 +140,7 @@ namespace TestLab1
 
             tools.Add(Tool.Freehand, new FreehandTool() { color = Color.Red, thickness = 3 });
             tools.Add(Tool.Ellipsehand, new EllipseTool() { color = Color.Red, thickness = 3 });
+            tools.Add(Tool.Rectanglehand, new RectangleTool() { color = Color.Red, thickness = 3 });
 
             _context.CurrentTool = tools[Tool.Freehand];
         }

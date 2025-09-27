@@ -12,7 +12,7 @@ namespace TestLab1.Draw.Tools
     {
         public Color color { get; set; } = Color.Red;
         public int thickness { get; set; } = 3;
-        public int MinPointDistanceSq { get; } = 36;
+        public int MinPointDistanceSq { get; } = 3;
         public abstract void OnMouseDown(Point p);
         public abstract IDrawable OnMouseMove(Point p);
         public abstract IDrawable OnMouseUp(Point p);
