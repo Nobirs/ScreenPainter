@@ -52,53 +52,21 @@ namespace TestLab1.Draw.Tools.Freehand
         public void OnDown(Point p)
         {
             Points.Add(p);
-            //if(Points.Count == 1)
-            //{
-            //    using (var brush = new SolidBrush(Color))
-            //    {
-            //        g.FillEllipse(brush,
-            //            Points[0].X - Thickness / 2,
-            //            Points[0].Y - Thickness / 2,
-            //            Thickness, Thickness);
-            //    }
-            //}
-
         }
 
         public void OnMove(Point p)
         {
             Points.Add(p);
-            //if(Points.Count > 0 && lastPointedIndex != Points.Count - 1)
-            //{
-            //    using var pen = new Pen(Color, Thickness)
-            //    {
-            //        StartCap = System.Drawing.Drawing2D.LineCap.Round,
-            //        EndCap = System.Drawing.Drawing2D.LineCap.Round,
-            //        LineJoin = System.Drawing.Drawing2D.LineJoin.Round
-            //    };
-            //    g.DrawLine(pen, Points[lastPointedIndex], Points[Points.Count - 1]);
-            //    lastPointedIndex = Points.Count - 1;
-            //}
         }
 
         public void OnUp(Point p)
         {
             Points.Add(p);
-            //if(Points.Count > 0)
-            //{
-            //    using (var brush = new SolidBrush(Color))
-            //    {
-            //        g.FillEllipse(brush,
-            //            Points[Points.Count - 1].X - Thickness / 2,
-            //            Points[Points.Count - 1].Y - Thickness / 2,
-            //            Thickness, Thickness);
-            //    }
-            //}
         }
 
-        public Rectangle GetBounds()
+        public System.Drawing.Rectangle GetBounds()
         {
-            if (Points.Count == 0) return Rectangle.Empty;
+            if (Points.Count == 0) return System.Drawing.Rectangle.Empty;
             int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
             foreach (var p in Points)
             {
@@ -107,7 +75,7 @@ namespace TestLab1.Draw.Tools.Freehand
                 if (p.X > maxX) maxX = p.X;
                 if (p.Y > maxY) maxY = p.Y;
             }
-            return Rectangle.FromLTRB(minX - Thickness, minY - Thickness, maxX + Thickness, maxY + Thickness);
+            return System.Drawing.Rectangle.FromLTRB(minX - Thickness, minY - Thickness, maxX + Thickness, maxY + Thickness);
         }
     }
 }
